@@ -261,6 +261,12 @@ async function getSandbox(runInSandbox: boolean): Promise<SandboxType> {
   if (runInSandbox) {
     if (process.platform === "darwin") {
       return SandboxType.MACOS_SEATBELT;
+    } else if (process.platform === "win32") {
+      // Windows doesn't have a sandbox implementation yet, so we run without a sandbox
+      if (isLoggingEnabled()) {
+        log("Running without sandbox on Windows platform");
+      }
+      return SandboxType.NONE;
     } else if (await isInContainer()) {
       return SandboxType.NONE;
     }

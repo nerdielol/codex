@@ -105,10 +105,10 @@ And it's **fully open-source** so you can see and contribute to how it develops!
 
 ---
 
-## Funding Opportunity 
-We’re excited to launch a **$1 million initiative** supporting open source projects that use Codex CLI and other OpenAI models.  
+## Funding Opportunity
+We’re excited to launch a **$1 million initiative** supporting open source projects that use Codex CLI and other OpenAI models.
 
-* Grants are awarded in **$25,000** API credit increments.  
+* Grants are awarded in **$25,000** API credit increments.
 * Applications are reviewed **on a rolling basis**.
 
 **Interested? [Apply here](https://openai.com/form/codex-open-source-fund/).**
@@ -145,6 +145,10 @@ The hardening mechanism Codex uses depends on your OS:
     writable roots (`$PWD`, `$TMPDIR`, `~/.codex`, etc.).
   - Outbound network is _fully blocked_ by default – even if a child process
     tries to `curl` somewhere it will fail.
+
+- **Windows** – currently runs without a sandbox. Commands execute directly in the current working directory.
+  - Network access is not restricted, so be cautious when approving commands.
+  - We recommend using WSL2 for a more secure experience with Linux sandboxing.
 
 - **Linux** – we recommend using Docker for sandboxing, where Codex launches itself inside a **minimal
   container image** and mounts your repo _read/write_ at the same path. A
@@ -304,7 +308,7 @@ Codex always runs in a **sandbox first**. If a proposed command or file change l
 <details>
 <summary>Does it work on Windows?</summary>
 
-Not directly. It requires [Windows Subsystem for Linux (WSL2)](https://learn.microsoft.com/en-us/windows/wsl/install) – Codex has been tested on macOS and Linux with Node ≥ 22.
+Yes, Codex now works natively on Windows. However, for the best security, we still recommend using [Windows Subsystem for Linux (WSL2)](https://learn.microsoft.com/en-us/windows/wsl/install) – Codex has been tested on macOS and Linux with Node ≥ 22.
 
 </details>
 
