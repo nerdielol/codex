@@ -3,7 +3,10 @@
  */
 
 export function isRateLimitError(err: unknown): boolean {
-  if (!err) return false;
+  if (!err) {
+    return false;
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const e = err as any;
   return (
     e.code === "rate_limit_exceeded" ||
@@ -35,4 +38,4 @@ export function computeBackoffDelay(
 
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-} 
+}

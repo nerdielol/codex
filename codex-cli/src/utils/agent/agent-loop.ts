@@ -18,14 +18,10 @@ import {
   setCurrentModel,
   setSessionId,
 } from "../session.js";
+import { isRateLimitError, computeBackoffDelay } from "./backoff.js";
 import { handleExecCommand } from "./handle-exec-command.js";
 import { randomUUID } from "node:crypto";
 import OpenAI, { APIConnectionTimeoutError } from "openai";
-import {
-  isRateLimitError,
-  computeBackoffDelay,
-  sleep,
-} from "./backoff.js";
 
 // Wait time before retrying after rate limit errors (ms).
 const RATE_LIMIT_RETRY_WAIT_MS = parseInt(
@@ -299,11 +295,8 @@ export class AgentLoop {
     // endpoint – their JSON differs slightly.
     // ---------------------------------------------------------------------
 
-    const isChatStyle =
-      // The chat endpoint nests function details under a `function` key.
-      // We conservatively treat the presence of this field as a signal that
-      // we are dealing with the chat format.
-      (item as any).function != null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const isChatStyle = (item as any).function != null;
 
     const name: string | undefined = isChatStyle
       ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -517,6 +510,7 @@ export class AgentLoop {
                 `instructions (length ${mergedInstructions.length}): ${mergedInstructions}`,
               );
             }
+            // eslint-disable-next-line no-await-in-loop
             stream = await this.oai.responses.create({
               model: this.model,
               instructions: mergedInstructions,
@@ -672,17 +666,19 @@ export class AgentLoop {
               errCtx.type === "invalid_request_error";
             if (isClientError) {
               const msgText = (() => {
-                const reqId = (
-                  errCtx as Partial<{
-                    request_id?: string;
-                    requestId?: string;
-                  }>
-                )?.request_id ?? (
-                  errCtx as Partial<{
-                    request_id?: string;
-                    requestId?: string;
-                  }>
-                )?.requestId;
+                const reqId =
+                  (
+                    errCtx as Partial<{
+                      request_id?: string;
+                      requestId?: string;
+                    }>
+                  )?.request_id ??
+                  (
+                    errCtx as Partial<{
+                      request_id?: string;
+                      requestId?: string;
+                    }>
+                  )?.requestId;
 
                 const details = [
                   `Status: ${status || "unknown"}`,
@@ -745,48 +741,50 @@ export class AgentLoop {
         try {
           while (streamRetryAttempt < MAX_STREAM_RETRIES) {
             try {
+              //  eslint-disable-next-line no-await-in-loop
               for await (const event of stream) {
                 if (isLoggingEnabled()) {
                   log(`AgentLoop.run(): response event ${event.type}`);
                 }
 
-            // process and surface each item (no‑op until we can depend on streaming events)
-            if (event.type === "response.output_item.done") {
-              const item = event.item;
-              // 1) if it's a reasoning item, annotate it
-              type ReasoningItem = { type?: string; duration_ms?: number };
-              const maybeReasoning = item as ReasoningItem;
-              if (maybeReasoning.type === "reasoning") {
-                maybeReasoning.duration_ms = Date.now() - thinkingStart;
-              }
-              if (item.type === "function_call") {
-                // Track outstanding tool call so we can abort later if needed.
-                // The item comes from the streaming response, therefore it has
-                // either `id` (chat) or `call_id` (responses) – we normalise
-                // by reading both.
-                const callId =
-                  (item as { call_id?: string; id?: string }).call_id ??
-                  (item as { id?: string }).id;
-                if (callId) {
-                  this.pendingAborts.add(callId);
+                // process and surface each item (no‑op until we can depend on streaming events)
+                if (event.type === "response.output_item.done") {
+                  const item = event.item;
+                  // 1) if it's a reasoning item, annotate it
+                  type ReasoningItem = { type?: string; duration_ms?: number };
+                  const maybeReasoning = item as ReasoningItem;
+                  if (maybeReasoning.type === "reasoning") {
+                    maybeReasoning.duration_ms = Date.now() - thinkingStart;
+                  }
+                  if (item.type === "function_call") {
+                    // Track outstanding tool call so we can abort later if needed.
+                    // The item comes from the streaming response, therefore it has
+                    // either `id` (chat) or `call_id` (responses) – we normalise
+                    // by reading both.
+                    const callId =
+                      (item as { call_id?: string; id?: string }).call_id ??
+                      (item as { id?: string }).id;
+                    if (callId) {
+                      this.pendingAborts.add(callId);
+                    }
+                  } else {
+                    stageItem(item as ResponseItem);
+                  }
                 }
-              } else {
-                stageItem(item as ResponseItem);
-              }
-            }
 
-            if (event.type === "response.completed") {
-              if (thisGeneration === this.generation && !this.canceled) {
-                for (const item of event.response.output) {
-                  stageItem(item as ResponseItem);
+                if (event.type === "response.completed") {
+                  if (thisGeneration === this.generation && !this.canceled) {
+                    for (const item of event.response.output) {
+                      stageItem(item as ResponseItem);
                     }
                   }
                   if (event.response.status === "completed") {
                     // TODO: remove this once we can depend on streaming events
-                    const newTurnInput = await this.processEventsWithoutStreaming(
-                      event.response.output,
-                      stageItem,
-                    );
+                    const newTurnInput =
+                      await this.processEventsWithoutStreaming(
+                        event.response.output,
+                        stageItem,
+                      );
                     turnInput = newTurnInput;
                   }
                   lastResponseId = event.response.id;
@@ -834,7 +832,8 @@ export class AgentLoop {
                     err instanceof Error ? err.message : String(err)
                   })`,
                 );
-                await sleep(delayMs);
+                // eslint-disable-next-line no-await-in-loop
+                await new Promise((resolve) => setTimeout(resolve, delayMs));
                 if (this.canceled || this.hardAbort.signal.aborted) {
                   this.onLoading(false);
                   return;
@@ -870,6 +869,7 @@ export class AgentLoop {
                       `instructions (length ${mergedInstructions.length}): ${mergedInstructions}`,
                     );
                   }
+                  // eslint-disable-next-line no-await-in-loop
                   stream = await this.oai.responses.create({
                     model: this.model,
                     instructions: mergedInstructions,
@@ -882,7 +882,8 @@ export class AgentLoop {
                       {
                         type: "function",
                         name: "shell",
-                        description: "Runs a shell command, and returns its output.",
+                        description:
+                          "Runs a shell command, and returns its output.",
                         strict: false,
                         parameters: {
                           type: "object",
@@ -893,7 +894,8 @@ export class AgentLoop {
                             },
                             workdir: {
                               type: "string",
-                              description: "The working directory for the command.",
+                              description:
+                                "The working directory for the command.",
                             },
                             timeout: {
                               type: "number",
