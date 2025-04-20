@@ -852,6 +852,18 @@ export class AgentLoop {
                     } as ResponseInputItem.FunctionCallOutput);
                   }
                 }
+                // NOTE: Any output items already emitted before the rate‑limit
+                // error *will have been delivered to the UI*. When we retry
+                // we resume the conversation by re‑sending the same turn
+                // input along with the original `previous_response_id` so
+                // the model can continue from where it left off. This means
+                // tokens that were **already streamed** remain visible to the
+                // user; they won't be repeated or lost. However, if the
+                // error occurs before the first full item is emitted, the
+                // partial message will not be recoverable and the turn will
+                // restart from the beginning. This behaviour is documented
+                // here rather than worked around to keep the retry logic
+                // simple and avoid duplicating partial content.
                 // Recreate the stream for the next retry
                 try {
                   let reasoning: Reasoning | undefined;
