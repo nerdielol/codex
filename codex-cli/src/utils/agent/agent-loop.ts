@@ -25,7 +25,7 @@ import {
   isRateLimitError,
   computeBackoffDelay,
   sleep,
-} from "./backoff";
+} from "./backoff.js";
 
 // Wait time before retrying after rate limit errors (ms).
 const RATE_LIMIT_RETRY_WAIT_MS = parseInt(
